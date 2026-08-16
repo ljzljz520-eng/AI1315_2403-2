@@ -35,6 +35,24 @@ func (s *MemoryStore) Replace(record BookingRecord) error {
 	return nil
 }
 
+// Update performs an atomic read-modify-write: apply receives an isolated
+// clone of the current record and returns the updated record, all while the
+// store's write lock is held. This prevents two concurrent Confirm calls from
+// reading the same stale version and overwriting each other's changes (a lost
+// update). The gate may still force both callers to arrive together, but the
+// lock serializes their mutations so every valid change is merged and persisted.
+func (s *MemoryStore) Update(id string, apply func(BookingRecord) BookingRecord) (BookingRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[id]
+	if !ok {
+		return BookingRecord{}, ErrRecordNotFound
+	}
+	updated := apply(cloneRecord(record))
+	s.records[id] = cloneRecord(updated)
+	return cloneRecord(updated), nil
+}
+
 func cloneRecord(record BookingRecord) BookingRecord {
 	copyOf := record
 	copyOf.Confirmations = make(map[string]string, len(record.Confirmations))

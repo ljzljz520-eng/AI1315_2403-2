@@ -18,22 +18,20 @@ func (s *UpdateService) Confirm(id string, change OperatorChange) (BookingRecord
 	if strings.TrimSpace(change.Operator) == "" || strings.TrimSpace(change.Field) == "" || strings.TrimSpace(change.Value) == "" {
 		return BookingRecord{}, ErrInvalidChange
 	}
-	record, err := s.store.Get(id)
-	if err != nil {
-		return BookingRecord{}, err
-	}
 	if s.gate != nil {
 		s.gate.BeforeWrite()
 	}
-	if record.Confirmations == nil {
-		record.Confirmations = make(map[string]string)
-	}
-	record.Confirmations[change.Field] = change.Value
-	record.Version++
-	if err := s.store.Replace(record); err != nil {
-		return BookingRecord{}, err
-	}
-	return record, nil
+	// The read-modify-write happens atomically inside the store so that two
+	// concurrent Confirm calls (even when the gate makes them arrive together)
+	// merge instead of overwriting each other's confirmations.
+	return s.store.Update(id, func(record BookingRecord) BookingRecord {
+		if record.Confirmations == nil {
+			record.Confirmations = make(map[string]string)
+		}
+		record.Confirmations[change.Field] = change.Value
+		record.Version++
+		return record
+	})
 }
 
 func (s *UpdateService) GetSummary(id string) (Summary, error) {
