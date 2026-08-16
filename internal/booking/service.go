@@ -18,19 +18,21 @@ func (s *UpdateService) Confirm(id string, change OperatorChange) (BookingRecord
 	if strings.TrimSpace(change.Operator) == "" || strings.TrimSpace(change.Field) == "" || strings.TrimSpace(change.Value) == "" {
 		return BookingRecord{}, ErrInvalidChange
 	}
-	record, err := s.store.Get(id)
-	if err != nil {
+	if _, err := s.store.Get(id); err != nil {
 		return BookingRecord{}, err
 	}
 	if s.gate != nil {
 		s.gate.BeforeWrite()
 	}
-	if record.Confirmations == nil {
-		record.Confirmations = make(map[string]string)
-	}
-	record.Confirmations[change.Field] = change.Value
-	record.Version++
-	if err := s.store.Replace(record); err != nil {
+	record, err := s.store.Update(id, func(record *BookingRecord) error {
+		if record.Confirmations == nil {
+			record.Confirmations = make(map[string]string)
+		}
+		record.Confirmations[change.Field] = change.Value
+		record.Version++
+		return nil
+	})
+	if err != nil {
 		return BookingRecord{}, err
 	}
 	return record, nil

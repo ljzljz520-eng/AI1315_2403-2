@@ -35,6 +35,24 @@ func (s *MemoryStore) Replace(record BookingRecord) error {
 	return nil
 }
 
+// Update applies a change to the current record while holding the store lock,
+// so concurrent changes cannot overwrite fields committed by another update.
+func (s *MemoryStore) Update(id string, update func(*BookingRecord) error) (BookingRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.records[id]
+	if !ok {
+		return BookingRecord{}, ErrRecordNotFound
+	}
+	record = cloneRecord(record)
+	if err := update(&record); err != nil {
+		return BookingRecord{}, err
+	}
+	s.records[id] = cloneRecord(record)
+	return cloneRecord(record), nil
+}
+
 func cloneRecord(record BookingRecord) BookingRecord {
 	copyOf := record
 	copyOf.Confirmations = make(map[string]string, len(record.Confirmations))
